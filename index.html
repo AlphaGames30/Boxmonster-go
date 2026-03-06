@@ -9,6 +9,9 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
 <style>
 
 html,body{
@@ -20,7 +23,6 @@ background:black;
 
 #map{
 height:100%;
-width:100%;
 }
 
 #menuButton{
@@ -86,28 +88,6 @@ border-radius:20px;
 margin-bottom:30px;
 }
 
-#stopScreen{
-position:absolute;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:black;
-display:none;
-flex-direction:column;
-align-items:center;
-justify-content:center;
-color:white;
-z-index:3000;
-}
-
-#stopImage{
-width:220px;
-height:220px;
-border-radius:20px;
-margin-bottom:20px;
-}
-
 #indexScreen{
 position:absolute;
 top:0;
@@ -117,7 +97,7 @@ height:100%;
 background:black;
 display:none;
 flex-direction:column;
-z-index:4000;
+z-index:3000;
 }
 
 #indexGrid{
@@ -159,12 +139,10 @@ Boîtes :
 
 <button onclick="openInventory()">Inventaire</button>
 <button onclick="openIndex()">Index</button>
-<button onclick="startCreateStop()">Créer CaptureStop</button>
+<button onclick="createStop()">Créer CaptureStop</button>
 <button onclick="toggleMenu()">Fermer</button>
 
 </div>
-
-<input type="file" id="imagePicker" accept="image/*" style="display:none">
 
 <div id="captureScreen">
 
@@ -182,17 +160,6 @@ Boîtes :
 
 </div>
 
-<div id="stopScreen">
-
-<img id="stopImage">
-
-<div id="stopTitle"></div>
-
-<button onclick="useStop()">Utiliser CaptureStop</button>
-<button onclick="closeStop()">Fermer</button>
-
-</div>
-
 <div id="indexScreen">
 
 <button onclick="closeIndex()">Fermer</button>
@@ -204,6 +171,15 @@ Boîtes :
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
+
+const firebaseConfig = {
+apiKey:"APIKEY",
+authDomain:"PROJECT.firebaseapp.com",
+projectId:"PROJECT"
+}
+
+firebase.initializeApp(firebaseConfig)
+const db=firebase.firestore()
 
 let map
 let player
@@ -223,8 +199,7 @@ let currentMonster=null
 
 let placingStop=false
 let stopName=""
-let stopImage=null
-let currentStop=null
+let stopImage=""
 
 const MAX_DISTANCE=50
 const COOLDOWN=300000
@@ -238,12 +213,10 @@ if(i>105) rarity="epic"
 if(i>115) rarity="legend"
 
 creatures.push({
-
 id:i,
 name:"Monster "+i,
 rarity:rarity,
 color:"hsl("+Math.random()*360+",70%,50%)"
-
 })
 
 }
@@ -251,6 +224,7 @@ color:"hsl("+Math.random()*360+",70%,50%)"
 function toggleMenu(){
 
 let m=document.getElementById("menu")
+
 m.style.display=m.style.display=="block"?"none":"block"
 
 }
@@ -370,32 +344,22 @@ function throwBox(type){
 let chance=0.4
 
 if(type=="basic"){
-
 if(basicBox<=0){alert("Plus de boîtes");return}
 basicBox--
 chance=0.4
-
 }
 
 if(type=="super"){
-
 if(superBox<=0){alert("Plus de boîtes");return}
 superBox--
 chance=0.65
-
 }
 
 if(type=="ultra"){
-
 if(ultraBox<=0){alert("Plus de boîtes");return}
 ultraBox--
 chance=0.9
-
 }
-
-if(currentMonster.rarity=="rare") chance-=0.1
-if(currentMonster.rarity=="epic") chance-=0.2
-if(currentMonster.rarity=="legend") chance-=0.35
 
 if(Math.random()<chance){
 
@@ -423,115 +387,35 @@ document.getElementById("captureScreen").style.display="none"
 
 }
 
-function distance(lat1,lon1,lat2,lon2){
+function createStop(){
 
-let R=6371000
-
-let dLat=(lat2-lat1)*Math.PI/180
-let dLon=(lon2-lon1)*Math.PI/180
-
-let a=
-Math.sin(dLat/2)**2+
-Math.cos(lat1*Math.PI/180)*
-Math.cos(lat2*Math.PI/180)*
-Math.sin(dLon/2)**2
-
-let c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))
-
-return R*c
-
-}
-
-function startCreateStop(){
-
-stopName=prompt("Nom CaptureStop (32 caractères max)")
+stopName=prompt("Nom CaptureStop (32 max)")
 
 if(!stopName)return
 
-if(stopName.length>32){
+let input=document.createElement("input")
+input.type="file"
 
-alert("32 caractères max")
-return
-
-}
-
-let picker=document.getElementById("imagePicker")
-picker.value=""
-
-setTimeout(()=>{
-picker.click()
-},200)
-
-}
-
-document.getElementById("imagePicker").addEventListener("change",function(e){
+input.onchange=e=>{
 
 let file=e.target.files[0]
 
-if(!file)return
-
 let reader=new FileReader()
 
-reader.onload=function(ev){
+reader.onload=ev=>{
 
 stopImage=ev.target.result
 placingStop=true
 
-alert("Clique sur la carte pour placer ton CaptureStop")
+alert("Clique sur la carte")
 
 }
 
 reader.readAsDataURL(file)
 
-})
-
-function openStop(stop){
-
-currentStop=stop
-
-document.getElementById("stopImage").src=stop.image
-document.getElementById("stopTitle").innerText=stop.name
-
-document.getElementById("stopScreen").style.display="flex"
-
 }
 
-function closeStop(){
-
-document.getElementById("stopScreen").style.display="none"
-
-}
-
-function useStop(){
-
-let d=distance(playerLat,playerLon,currentStop.lat,currentStop.lon)
-
-if(d>MAX_DISTANCE){
-
-alert("Trop loin (50m)")
-return
-
-}
-
-let key="cool_"+currentStop.id
-let last=localStorage.getItem(key)
-
-if(last && Date.now()-last<COOLDOWN){
-
-alert("Attends 5 minutes")
-return
-
-}
-
-let reward=3+Math.floor(Math.random()*5)
-
-basicBox+=reward
-
-alert(currentStop.name+" +"+reward+" boîtes")
-
-localStorage.setItem(key,Date.now())
-
-updateHUD()
+input.click()
 
 }
 
@@ -545,29 +429,51 @@ player=L.circle([lat,lon],{radius:10,color:"blue"}).addTo(map)
 
 spawnCreatures(lat,lon)
 
+loadStops()
+
 map.on("click",function(e){
 
 if(!placingStop)return
 
 placingStop=false
 
+db.collection("captureStops").add({
+
+name:stopName,
+image:stopImage,
+lat:e.latlng.lat,
+lon:e.latlng.lng,
+status:"pending",
+date:Date.now()
+
+})
+
+alert("CaptureStop envoyé aux modérateurs")
+
+})
+
+}
+
+function loadStops(){
+
+db.collection("captureStops")
+.where("status","==","approved")
+.get()
+.then(snapshot=>{
+
+snapshot.forEach(doc=>{
+
+let s=doc.data()
+
 let icon=L.icon({
-iconUrl:stopImage,
+iconUrl:s.image,
 iconSize:[50,50],
 className:"captureStopIcon"
 })
 
-let marker=L.marker([e.latlng.lat,e.latlng.lng],{icon:icon}).addTo(map)
+L.marker([s.lat,s.lon],{icon}).addTo(map)
 
-let stop={
-id:Date.now(),
-name:stopName,
-image:stopImage,
-lat:e.latlng.lat,
-lon:e.latlng.lng
-}
-
-marker.on("click",()=>openStop(stop))
+})
 
 })
 
