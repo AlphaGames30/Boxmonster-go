@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>BoxMonster GO</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+
+html,body{
+margin:0;
+height:100%;
+font-family:Arial;
+background:black;
+}
+
+#map{
+height:100%;
+width:100%;
+}
+
+#menuButton{
+position:absolute;
+top:10px;
+right:10px;
+background:white;
+padding:10px;
+border-radius:10px;
+z-index:1000;
+}
+
+#menu{
+position:absolute;
+top:60px;
+right:10px;
+background:white;
+padding:10px;
+border-radius:10px;
+display:none;
+z-index:1000;
+}
+
+#playerHUD{
+position:absolute;
+top:10px;
+left:10px;
+background:white;
+padding:10px;
+border-radius:10px;
+z-index:1000;
+}
+
+button{
+padding:10px;
+margin:5px;
+}
+
+.captureStopIcon{
+border-radius:50%;
+border:4px solid cyan;
+}
+
+#captureScreen{
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:black;
+display:none;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+color:white;
+z-index:2000;
+}
+
+#monster3D{
+width:160px;
+height:160px;
+border-radius:20px;
+margin-bottom:30px;
+}
+
+#stopScreen{
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:black;
+display:none;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+color:white;
+z-index:3000;
+}
+
+#stopImage{
+width:220px;
+height:220px;
+border-radius:20px;
+margin-bottom:20px;
+}
+
+#indexScreen{
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:black;
+display:none;
+flex-direction:column;
+z-index:4000;
+}
+
+#indexGrid{
+display:grid;
+grid-template-columns:repeat(6,1fr);
+gap:10px;
+padding:20px;
+}
+
+.indexMonster{
+width:50px;
+height:50px;
+border-radius:10px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div id="playerHUD">
+
+<b>Niveau <span id="level">1</span></b><br>
+XP : <span id="xp">0</span><br>
+
+Boîtes :
+<span id="basicBox">10</span> 🟢
+<span id="superBox">5</span> 🔵
+<span id="ultraBox">2</span> 🟣
+
+</div>
+
+<div id="menuButton" onclick="toggleMenu()">MENU</div>
+
+<div id="menu">
+
+<button onclick="openInventory()">Inventaire</button>
+<button onclick="openIndex()">Index</button>
+<button onclick="startCreateStop()">Créer CaptureStop</button>
+<button onclick="toggleMenu()">Fermer</button>
+
+</div>
+
+<input type="file" id="imagePicker" accept="image/*" style="display:none">
+
+<div id="captureScreen">
+
+<div id="monster3D"></div>
+
+<div>
+
+<button onclick="throwBox('basic')">Boîte 🟢</button>
+<button onclick="throwBox('super')">Super 🔵</button>
+<button onclick="throwBox('ultra')">Ultra 🟣</button>
+
+</div>
+
+<button onclick="closeCapture()">Fuir</button>
+
+</div>
+
+<div id="stopScreen">
+
+<img id="stopImage">
+
+<div id="stopTitle"></div>
+
+<button onclick="useStop()">Utiliser CaptureStop</button>
+<button onclick="closeStop()">Fermer</button>
+
+</div>
+
+<div id="indexScreen">
+
+<button onclick="closeIndex()">Fermer</button>
+
+<div id="indexGrid"></div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+
+let map
+let player
+let playerLat
+let playerLon
+
+let xp=0
+let level=1
+
+let basicBox=10
+let superBox=5
+let ultraBox=2
+
+let inventory=[]
+let creatures=[]
+let currentMonster=null
+
+let placingStop=false
+let stopName=""
+let stopImage=null
+let currentStop=null
+
+const MAX_DISTANCE=50
+const COOLDOWN=300000
+
+for(let i=1;i<=120;i++){
+
+let rarity="common"
+
+if(i>80) rarity="rare"
+if(i>105) rarity="epic"
+if(i>115) rarity="legend"
+
+creatures.push({
+
+id:i,
+name:"Monster "+i,
+rarity:rarity,
+color:"hsl("+Math.random()*360+",70%,50%)"
+
+})
+
+}
+
+function toggleMenu(){
+
+let m=document.getElementById("menu")
+m.style.display=m.style.display=="block"?"none":"block"
+
+}
+
+function updateHUD(){
+
+document.getElementById("xp").innerText=xp
+document.getElementById("level").innerText=level
+
+document.getElementById("basicBox").innerText=basicBox
+document.getElementById("superBox").innerText=superBox
+document.getElementById("ultraBox").innerText=ultraBox
+
+}
+
+function addXP(a){
+
+xp+=a
+
+let need=level*100
+
+if(xp>=need){
+
+xp-=need
+level++
+
+alert("Niveau "+level)
+
+}
+
+updateHUD()
+
+}
+
+function openInventory(){
+
+let text="Inventaire\n\n"
+
+inventory.forEach(c=>{
+text+=c.name+" ("+c.rarity+")\n"
+})
+
+alert(text)
+
+}
+
+function openIndex(){
+
+let grid=document.getElementById("indexGrid")
+
+grid.innerHTML=""
+
+creatures.forEach(c=>{
+
+let owned=inventory.find(i=>i.id==c.id)
+
+let div=document.createElement("div")
+
+div.className="indexMonster"
+
+if(owned){
+div.style.background=c.color
+}else{
+div.style.background="black"
+div.style.border="1px solid white"
+}
+
+grid.appendChild(div)
+
+})
+
+document.getElementById("indexScreen").style.display="flex"
+
+}
+
+function closeIndex(){
+
+document.getElementById("indexScreen").style.display="none"
+
+}
+
+function spawnCreatures(lat,lon){
+
+for(let i=0;i<4;i++){
+
+let c=creatures[Math.floor(Math.random()*creatures.length)]
+
+let marker=L.marker([
+lat+(Math.random()-0.5)/300,
+lon+(Math.random()-0.5)/300
+]).addTo(map)
+
+marker.creature=c
+
+marker.on("click",()=>startCapture(c,marker))
+
+}
+
+}
+
+function startCapture(creature,marker){
+
+currentMonster=creature
+
+map.removeLayer(marker)
+
+let div=document.getElementById("monster3D")
+
+div.style.background=creature.color
+
+document.getElementById("captureScreen").style.display="flex"
+
+}
+
+function throwBox(type){
+
+let chance=0.4
+
+if(type=="basic"){
+
+if(basicBox<=0){alert("Plus de boîtes");return}
+basicBox--
+chance=0.4
+
+}
+
+if(type=="super"){
+
+if(superBox<=0){alert("Plus de boîtes");return}
+superBox--
+chance=0.65
+
+}
+
+if(type=="ultra"){
+
+if(ultraBox<=0){alert("Plus de boîtes");return}
+ultraBox--
+chance=0.9
+
+}
+
+if(currentMonster.rarity=="rare") chance-=0.1
+if(currentMonster.rarity=="epic") chance-=0.2
+if(currentMonster.rarity=="legend") chance-=0.35
+
+if(Math.random()<chance){
+
+alert("Capture réussie")
+
+inventory.push(currentMonster)
+
+addXP(20)
+
+closeCapture()
+
+}else{
+
+alert("Raté")
+
+}
+
+updateHUD()
+
+}
+
+function closeCapture(){
+
+document.getElementById("captureScreen").style.display="none"
+
+}
+
+function distance(lat1,lon1,lat2,lon2){
+
+let R=6371000
+
+let dLat=(lat2-lat1)*Math.PI/180
+let dLon=(lon2-lon1)*Math.PI/180
+
+let a=
+Math.sin(dLat/2)**2+
+Math.cos(lat1*Math.PI/180)*
+Math.cos(lat2*Math.PI/180)*
+Math.sin(dLon/2)**2
+
+let c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))
+
+return R*c
+
+}
+
+function startCreateStop(){
+
+stopName=prompt("Nom CaptureStop (32 caractères max)")
+
+if(!stopName)return
+
+if(stopName.length>32){
+
+alert("32 caractères max")
+return
+
+}
+
+let picker=document.getElementById("imagePicker")
+picker.value=""
+
+setTimeout(()=>{
+picker.click()
+},200)
+
+}
+
+document.getElementById("imagePicker").addEventListener("change",function(e){
+
+let file=e.target.files[0]
+
+if(!file)return
+
+let reader=new FileReader()
+
+reader.onload=function(ev){
+
+stopImage=ev.target.result
+placingStop=true
+
+alert("Clique sur la carte pour placer ton CaptureStop")
+
+}
+
+reader.readAsDataURL(file)
+
+})
+
+function openStop(stop){
+
+currentStop=stop
+
+document.getElementById("stopImage").src=stop.image
+document.getElementById("stopTitle").innerText=stop.name
+
+document.getElementById("stopScreen").style.display="flex"
+
+}
+
+function closeStop(){
+
+document.getElementById("stopScreen").style.display="none"
+
+}
+
+function useStop(){
+
+let d=distance(playerLat,playerLon,currentStop.lat,currentStop.lon)
+
+if(d>MAX_DISTANCE){
+
+alert("Trop loin (50m)")
+return
+
+}
+
+let key="cool_"+currentStop.id
+let last=localStorage.getItem(key)
+
+if(last && Date.now()-last<COOLDOWN){
+
+alert("Attends 5 minutes")
+return
+
+}
+
+let reward=3+Math.floor(Math.random()*5)
+
+basicBox+=reward
+
+alert(currentStop.name+" +"+reward+" boîtes")
+
+localStorage.setItem(key,Date.now())
+
+updateHUD()
+
+}
+
+function startGame(lat,lon){
+
+map=L.map("map").setView([lat,lon],17)
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map)
+
+player=L.circle([lat,lon],{radius:10,color:"blue"}).addTo(map)
+
+spawnCreatures(lat,lon)
+
+map.on("click",function(e){
+
+if(!placingStop)return
+
+placingStop=false
+
+let icon=L.icon({
+iconUrl:stopImage,
+iconSize:[50,50],
+className:"captureStopIcon"
+})
+
+let marker=L.marker([e.latlng.lat,e.latlng.lng],{icon:icon}).addTo(map)
+
+let stop={
+id:Date.now(),
+name:stopName,
+image:stopImage,
+lat:e.latlng.lat,
+lon:e.latlng.lng
+}
+
+marker.on("click",()=>openStop(stop))
+
+})
+
+}
+
+navigator.geolocation.watchPosition(pos=>{
+
+let lat=pos.coords.latitude
+let lon=pos.coords.longitude
+
+playerLat=lat
+playerLon=lon
+
+if(!map){
+
+startGame(lat,lon)
+
+}else{
+
+player.setLatLng([lat,lon])
+map.setView([lat,lon])
+
+}
+
+})
+
+updateHUD()
+
+</script>
+
+</body>
+</html>
