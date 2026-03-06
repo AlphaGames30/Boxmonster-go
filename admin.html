@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+<title>Admin CaptureStops</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+
+body{
+background:#111;
+color:white;
+font-family:Arial;
+}
+
+.stop{
+border:1px solid white;
+padding:15px;
+margin:15px;
+}
+
+img{
+width:200px;
+border-radius:10px;
+}
+
+button{
+padding:10px;
+margin:5px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>Connexion Modérateur</h2>
+
+<input id="email" placeholder="email">
+<input id="pass" type="password" placeholder="password">
+
+<button onclick="login()">Connexion</button>
+
+<div id="panel"></div>
+
+<script>
+
+const firebaseConfig = {
+apiKey:"APIKEY",
+authDomain:"PROJECT.firebaseapp.com",
+projectId:"PROJECT"
+}
+
+firebase.initializeApp(firebaseConfig)
+
+const db=firebase.firestore()
+
+const ADMIN_EMAIL="edonis.imbert@gmail.com"
+const ADMIN_PASS="admin123"
+
+function login(){
+
+let e=document.getElementById("email").value
+let p=document.getElementById("pass").value
+
+if(e!==ADMIN_EMAIL || p!==ADMIN_PASS){
+
+alert("Accès refusé")
+return
+
+}
+
+loadStops()
+
+}
+
+function loadStops(){
+
+db.collection("captureStops")
+.where("status","==","pending")
+.get()
+.then(snapshot=>{
+
+let panel=document.getElementById("panel")
+
+panel.innerHTML=""
+
+snapshot.forEach(doc=>{
+
+let s=doc.data()
+
+let div=document.createElement("div")
+div.className="stop"
+
+div.innerHTML=`
+
+<h3>${s.name}</h3>
+
+<img src="${s.image}">
+
+<p>${s.lat} , ${s.lon}</p>
+
+<button onclick="approve('${doc.id}')">Accepter</button>
+
+<button onclick="reject('${doc.id}')">Refuser</button>
+
+`
+
+panel.appendChild(div)
+
+})
+
+})
+
+}
+
+function approve(id){
+
+db.collection("captureStops").doc(id).update({
+status:"approved"
+})
+
+loadStops()
+
+}
+
+function reject(id){
+
+db.collection("captureStops").doc(id).delete()
+
+loadStops()
+
+}
+
+</script>
+
+</body>
+</html>
